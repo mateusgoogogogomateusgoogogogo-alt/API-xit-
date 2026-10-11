@@ -1,0 +1,123 @@
+{
+  "keys": {
+    "DNLOVE-9BZ9-ZIBC-WVR2-UC8L": {
+      "name": "DNLOVE",
+      "created_at": "2026-10-10T00:14:08.644837",
+      "expires_at": "2026-10-11T00:14:08.644837",
+      "active": true,
+      "uses": 1,
+      "last_used": "2026-10-10T00:14:20.455081",
+      "devices": [],
+      "max_devices": 1,
+      "permanent": false
+    },
+    "LEOGOSTOSO-ZI1W-XX16-DP5F-SFJF": {
+      "name": "Leogostoso",
+      "created_at": "2026-10-10T00:44:06.695077",
+      "expires_at": "2026-10-12T00:44:06.695077",
+      "active": true,
+      "uses": 7,
+      "last_used": "2026-10-10T18:50:03.975737+00:00",
+      "max_devices": 1,
+      "devices": [
+        "659163C5D1936924"
+      ],
+      "permanent": false
+    }
+  },
+  "admins": [],
+  "config": {
+    "maintenance": false,
+    "message": "Sistema em manutenção",
+    "watermark": "By MTGXZz TEAM",
+    "maintenance_map": {
+      "aimbot": false,
+      "autoshot": false,
+      "visible": false,
+      "showfov": false,
+      "ignoredeath": false,
+      "fastcross": false,
+      "wallhack": false,
+      "radarhack": false,
+      "ammo": false,
+      "recoil": false,
+      "watermark": false
+    }
+  },
+  "features": {
+    "aimbot_esp_lock": {
+      "name": "Aimbot+ESP+Lock ALL",
+      "icon": "A",
+      "category": "aimbot",
+      "locked": true,
+      "order": 1,
+      "type": "toggle",
+      "special": true
+    },
+    "speed_hack": {
+      "name": "Speed Hack",
+      "icon": "S",
+      "category": "diversos",
+      "locked": false,
+      "order": 2,
+      "type": "toggle"
+    },
+    "wall_hack": {
+      "name": "Wall Hack",
+      "icon": "W",
+      "category": "visuais",
+      "locked": false,
+      "order": 3,
+      "type": "toggle"
+    },
+    "radar_hack": {
+      "name": "Radar Hack",
+      "icon": "R",
+      "category": "visuais",
+      "locked": false,
+      "order": 4,
+      "type": "toggle"
+    },
+    "infinite_ammo": {
+      "name": "Infinite Ammo",
+      "icon": "I",
+      "category": "diversos",
+      "locked": false,
+      "order": 5,
+      "type": "toggle"
+    },
+    "no_recoil": {
+      "name": "No Recoil",
+      "icon": "N",
+      "category": "diversos",
+      "locked": false,
+      "order": 6,
+      "type": "toggle"
+    },
+    "fast_cross": {
+      "name": "Fast Crosshair",
+      "icon": "F",
+      "category": "visuais",
+      "locked": false,
+      "order": 7,
+      "type": "toggle"
+    },
+    "ignore_death": {
+      "name": "Ignore Death",
+      "icon": "D",
+      "category": "visuais",
+      "locked": false,
+      "order": 8,
+      "type": "toggle"
+    }
+  },
+  "bans": {},
+  "logs": [
+    {
+      "hwid": "659163C5D1936924",
+      "ip": "192.168.10.108",
+      "key": "H",
+      "data": "2026-10-10T18:30:53.246445+00:00"
+    }
+  ]
+}
