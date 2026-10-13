@@ -1,5 +1,5 @@
 # ============================================================
-#   FOULD STORES v26.0 — PAINEL ADM COMPLETO
+#   FOULD STORES v26.1 — API + BOT (Render-Ready)
 #   Dev: MTGXZz TEAM  •  Equipe: FOULD STORES
 # ============================================================
 
@@ -8,19 +8,45 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify
 import discord
 from discord.ext import commands
-import urllib.request
 
-BOT_TOKEN = "COLE_AQUI_O_TOKEN_DO_BOT"
-ADMIN_IDS = {1426663384614699223}
-API_PORT  = 5023
-DB_FILE   = "fould.json"
+# ============================================================
+#   ⚙️ CONFIG — LÊ DAS VARIÁVEIS DE AMBIENTE
+# ============================================================
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-APP_VERSION_CODE = 26
-APP_VERSION_NAME = "26.0"
-APP_DOWNLOAD_URL = "https://discord.gg/fould"
+# Lê ADMIN_IDS do ambiente (aceita "123,456" ou "123 456")
+ADMIN_IDS = set()
+_admins_str = os.environ.get("ADMIN_IDS", "")
+if _admins_str:
+    for _id in re.split(r"[,\s]+", _admins_str.strip()):
+        try:
+            ADMIN_IDS.add(int(_id))
+        except: pass
 
-PUBLIC_API_URL = ""
+# Fallback se não tiver variável
+if not ADMIN_IDS:
+    ADMIN_IDS = {1426663384614699223}
+
+# Render injeta a porta na env var "PORT"
+API_PORT = int(os.environ.get("PORT", os.environ.get("API_PORT", "5023")))
+DB_FILE  = os.environ.get("DB_FILE", "fould.json")
+
+APP_VERSION_CODE  = 26
+APP_VERSION_NAME  = "26.0"
+APP_DOWNLOAD_URL  = os.environ.get("APP_DOWNLOAD_URL", "https://discord.gg/fould")
+PUBLIC_API_URL    = os.environ.get("PUBLIC_API_URL", "")
 AUTO_PING_INTERVAL = 600
+
+# Debug
+print("=" * 55)
+print("  🔧 CONFIGURAÇÕES CARREGADAS")
+print("=" * 55)
+print(f"  BOT_TOKEN:      {'✅ configurado' if BOT_TOKEN else '❌ VAZIO!'}")
+print(f"  ADMIN_IDS:      {ADMIN_IDS}")
+print(f"  API_PORT:       {API_PORT}")
+print(f"  DB_FILE:        {DB_FILE}")
+print(f"  PUBLIC_API_URL: {PUBLIC_API_URL or '(vazio)'}")
+print("=" * 55)
 
 
 def now_utc(): return datetime.now(timezone.utc)
@@ -53,8 +79,7 @@ def default_db():
         },
         "features": {
             "aimbot_esp_lock": {"name": "Aimbot+ESP+Lock ALL", "icon": "A",
-                "category": "aimbot", "locked": True, "order": 1,
-                "type": "toggle", "special": True},
+                "category": "aimbot", "locked": True, "order": 1, "type": "toggle"},
             "speed_hack": {"name": "Speed Hack", "icon": "S", "category": "diversos",
                 "locked": False, "order": 2, "type": "toggle"},
             "wall_hack": {"name": "Wall Hack", "icon": "W", "category": "visuais",
@@ -96,23 +121,13 @@ def load_db():
     if "bans" not in db: db["bans"] = {}
     if "logs" not in db: db["logs"] = []
     if "admins" not in db: db["admins"] = []
-    for k, v in default_db()["features"].items():
-        if k not in db["features"]:
-            db["features"][k] = v
     for k, v in db["keys"].items():
         if "devices" not in v: v["devices"] = []
-        if "max_devices" not in v:
-            v["max_devices"] = db["config"].get("default_max_devices", 1)
+        if "max_devices" not in v: v["max_devices"] = 1
         if "permanent" not in v: v["permanent"] = False
         if "paused" not in v: v["paused"] = False
         if "start_on_first_use" not in v: v["start_on_first_use"] = False
         if "activated" not in v: v["activated"] = True
-        if "duration_seconds" not in v:
-            try:
-                created = parse_iso(v["created_at"])
-                expires = parse_iso(v["expires_at"])
-                v["duration_seconds"] = int((expires - created).total_seconds())
-            except: v["duration_seconds"] = 0
     return db
 
 def save_db(d):
@@ -171,8 +186,7 @@ def add_log(hwid, ip, key, action="use"):
         "hwid": hwid.upper() if hwid else "",
         "ip": ip.upper() if ip else "",
         "key": key.upper() if key else "",
-        "action": action,
-        "data": iso_now()
+        "action": action, "data": iso_now()
     })
     if len(db["logs"]) > 500: db["logs"] = db["logs"][-500:]
     save_db(db)
@@ -283,6 +297,7 @@ def validate_key(key, hwid="", ip=""):
         k["activated"] = True
         k["activated_at"] = iso_now()
         save_db(db)
+        print(f"🔓 Key {key[:20]}... ativada agora!")
 
     is_perm = k.get("permanent", False) or k.get("expires_at") == "PERMANENTE"
 
@@ -337,11 +352,13 @@ def auto_ping_loop():
                 time.sleep(60); continue
             url = cfg.get("api_url", "") or PUBLIC_API_URL
             if url:
-                ping_url = f"{url.rstrip('/')}/status"
+                ping_url = f"{url.rstrip('/')}/ping"
                 try:
-                    req = urllib.request.Request(ping_url, headers={"User-Agent": "FouldPing/1.0"})
+                    import urllib.request
+                    req = urllib.request.Request(ping_url,
+                        headers={"User-Agent": "FouldPing/1.0"})
                     with urllib.request.urlopen(req, timeout=10) as resp:
-                        if resp.status == 200: print(f"💓 Auto-ping OK")
+                        print(f"💓 Auto-ping OK ({resp.status})")
                 except Exception as e: print(f"⚠️ Auto-ping: {e}")
             time.sleep(AUTO_PING_INTERVAL)
         except: time.sleep(60)
@@ -351,7 +368,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return jsonify({"app": "FOULD STORES", "dev": "MTGXZz TEAM", "version": "26.0"})
+    return jsonify({"app": "FOULD STORES", "dev": "MTGXZz TEAM", "version": "26.1"})
 
 @app.route("/status")
 def status():
@@ -360,7 +377,7 @@ def status():
         "watermark": c.get("watermark", "By MTGXZz TEAM"),
         "discord_link": c.get("discord_link", "https://discord.gg/fould"),
         "min_version": c.get("min_version", APP_VERSION_CODE),
-        "version_name": APP_VERSION_NAME,
+        "version_name": c.get("version_name", APP_VERSION_NAME),
         "download_url": c.get("download_url", APP_DOWNLOAD_URL),
         "features": get_features(), "uptime": iso_now()})
 
@@ -387,6 +404,7 @@ def api_validate():
             "maintenance": True, "message": c["message"]}), 503
     return jsonify(validate_key(key, hwid, ip))
 
+
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -394,10 +412,10 @@ def get_local_ip():
         return ip
     except: return "127.0.0.1"
 
-def run_flask():
-    app.run(host="0.0.0.0", port=API_PORT, debug=False, use_reloader=False)
 
-
+# ============================================================
+#   BOT DISCORD
+# ============================================================
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -406,13 +424,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 def is_adm(did): return is_admin(did)
 
 
-# ============================================================
-#   MODAIS
-# ============================================================
 class CreateKeyModal(discord.ui.Modal, title="🔑 Criar Nova Key"):
-    nome = discord.ui.TextInput(label="Nome da Key", placeholder="fould, premium, vip...", max_length=30)
-    tempo = discord.ui.TextInput(label="Tempo (1d, 2h, 1mes, 1ano)", placeholder="30d", max_length=40)
-    limite = discord.ui.TextInput(label="Limite de dispositivos", placeholder="1", required=False, max_length=3)
+    nome = discord.ui.TextInput(label="Nome da Key", placeholder="fould...", max_length=30)
+    tempo = discord.ui.TextInput(label="Tempo (1d, 2h, 1mes)", placeholder="30d", max_length=40)
+    limite = discord.ui.TextInput(label="Dispositivos", placeholder="1", required=False, max_length=3)
 
     async def on_submit(self, itx):
         if not is_adm(itx.user.id):
@@ -428,15 +443,15 @@ class CreateKeyModal(discord.ui.Modal, title="🔑 Criar Nova Key"):
         emb = discord.Embed(title="✅ KEY CRIADA", color=0x4ADE80)
         emb.add_field(name="Key", value=f"```{key}```", inline=False)
         emb.add_field(name="Nome", value=str(self.nome), inline=True)
-        emb.add_field(name="Duracao", value=human(secs) + " (após ativar)", inline=True)
+        emb.add_field(name="Duração", value=human(secs) + " (após ativar)", inline=True)
         emb.add_field(name="Dispositivos", value=str(lim), inline=True)
         emb.set_footer(text="⏱ Tempo só começa quando o usuário ativar")
         await itx.response.send_message(embed=emb, ephemeral=True)
 
 
 class CreatePermanentKeyModal(discord.ui.Modal, title="♾️ Criar Key PERMANENTE"):
-    nome = discord.ui.TextInput(label="Nome da Key", placeholder="fould, master, admin...", max_length=30)
-    limite = discord.ui.TextInput(label="Limite de dispositivos", placeholder="1", required=False, max_length=3)
+    nome = discord.ui.TextInput(label="Nome da Key", placeholder="fould...", max_length=30)
+    limite = discord.ui.TextInput(label="Dispositivos", placeholder="1", required=False, max_length=3)
 
     async def on_submit(self, itx):
         if not is_adm(itx.user.id):
@@ -449,14 +464,14 @@ class CreatePermanentKeyModal(discord.ui.Modal, title="♾️ Criar Key PERMANEN
         emb = discord.Embed(title="♾️ KEY PERMANENTE CRIADA", color=0xFFD700)
         emb.add_field(name="Key", value=f"```{key}```", inline=False)
         emb.add_field(name="Nome", value=str(self.nome), inline=True)
-        emb.add_field(name="Duracao", value="NUNCA EXPIRA", inline=True)
+        emb.add_field(name="Duração", value="NUNCA EXPIRA", inline=True)
         emb.add_field(name="Dispositivos", value=str(lim), inline=True)
         await itx.response.send_message(embed=emb, ephemeral=True)
 
 
 class BanUserModal(discord.ui.Modal, title="🚫 Banir Usuário"):
-    valor = discord.ui.TextInput(label="Valor (HWID, IP ou Key)", placeholder="cole aqui...", max_length=200)
-    motivo = discord.ui.TextInput(label="Motivo", placeholder="Motivo do ban", required=False, max_length=100)
+    valor = discord.ui.TextInput(label="Valor (HWID, IP ou Key)", max_length=200)
+    motivo = discord.ui.TextInput(label="Motivo", required=False, max_length=100)
 
     async def on_submit(self, itx):
         if not is_adm(itx.user.id):
@@ -472,9 +487,9 @@ class BanUserModal(discord.ui.Modal, title="🚫 Banir Usuário"):
 
 
 class SetVersionModal(discord.ui.Modal, title="⬆️ Definir Versão Mínima"):
-    code = discord.ui.TextInput(label="Versão (código numérico)", placeholder="26", max_length=4)
+    code = discord.ui.TextInput(label="Versão (código)", placeholder="26", max_length=4)
     nome = discord.ui.TextInput(label="Nome da versão", placeholder="26.0", max_length=10)
-    url = discord.ui.TextInput(label="URL de download", placeholder="https://...", required=False, max_length=200)
+    url = discord.ui.TextInput(label="URL de download", required=False, max_length=200)
 
     async def on_submit(self, itx):
         if not is_adm(itx.user.id):
@@ -486,14 +501,13 @@ class SetVersionModal(discord.ui.Modal, title="⬆️ Definir Versão Mínima"):
         set_config(min_version=c, version_name=str(self.nome),
                    download_url=str(self.url or APP_DOWNLOAD_URL))
         await itx.response.send_message(
-            f"✅ Versão mínima: **v{self.nome}** (code {c})\nURL: {self.url or APP_DOWNLOAD_URL}",
-            ephemeral=True)
+            f"✅ Versão mínima: **v{self.nome}** (code {c})", ephemeral=True)
 
 
 class SetConfigModal(discord.ui.Modal, title="⚙️ Configurar API"):
-    api_url = discord.ui.TextInput(label="URL pública da API", placeholder="https://sua-api.onrender.com", required=False, max_length=200)
-    watermark = discord.ui.TextInput(label="Watermark", placeholder="By MTGXZz TEAM", required=False, max_length=50)
-    discord_link = discord.ui.TextInput(label="Link do Discord", placeholder="https://discord.gg/fould", required=False, max_length=200)
+    api_url = discord.ui.TextInput(label="URL pública da API", required=False, max_length=200)
+    watermark = discord.ui.TextInput(label="Watermark", required=False, max_length=50)
+    discord_link = discord.ui.TextInput(label="Link do Discord", required=False, max_length=200)
 
     async def on_submit(self, itx):
         if not is_adm(itx.user.id):
@@ -506,8 +520,8 @@ class SetConfigModal(discord.ui.Modal, title="⚙️ Configurar API"):
         await itx.response.send_message("✅ Configuração salva!", ephemeral=True)
 
 
-class MaintenanceModal(discord.ui.Modal, title="🔧 Mensagem de Manutenção"):
-    msg = discord.ui.TextInput(label="Motivo da manutenção", placeholder="Sistema em manutenção", max_length=100)
+class MaintenanceModal(discord.ui.Modal, title="🔧 Manutenção"):
+    msg = discord.ui.TextInput(label="Motivo", placeholder="Sistema em manutenção", max_length=100)
 
     async def on_submit(self, itx):
         if not is_adm(itx.user.id):
@@ -532,7 +546,7 @@ class AddAdminModal(discord.ui.Modal, title="👑 Adicionar Admin"):
 
 
 class RemoveAdminModal(discord.ui.Modal, title="🚫 Remover Admin"):
-    uid = discord.ui.TextInput(label="ID do Discord", placeholder="123456789012345678", max_length=30)
+    uid = discord.ui.TextInput(label="ID do Discord", max_length=30)
 
     async def on_submit(self, itx):
         if itx.user.id not in ADMIN_IDS:
@@ -542,12 +556,9 @@ class RemoveAdminModal(discord.ui.Modal, title="🚫 Remover Admin"):
         except:
             await itx.response.send_message("ID inválido.", ephemeral=True); return
         remove_admin(uid)
-        await itx.response.send_message(f"✅ <@{uid}> removido dos admins.", ephemeral=True)
+        await itx.response.send_message(f"✅ <@{uid}> removido.", ephemeral=True)
 
 
-# ============================================================
-#   SELECTS
-# ============================================================
 class LockFeatureSelect(discord.ui.Select):
     def __init__(self):
         feats = get_features(); opts = []
@@ -578,7 +589,6 @@ class LockFeatureView(discord.ui.View):
 
 
 class ManageKeySelect(discord.ui.Select):
-    """Select pra gerenciar keys específicas."""
     def __init__(self, action="pause"):
         self.action = action
         feats = load_db()["keys"]
@@ -638,7 +648,6 @@ class ManageKeyView(discord.ui.View):
 
 
 class BanSelect(discord.ui.Select):
-    """Select pra desbanir."""
     def __init__(self):
         bans = load_db().get("bans", {})
         opts = []
@@ -666,13 +675,9 @@ class BanView(discord.ui.View):
         self.add_item(BanSelect())
 
 
-# ============================================================
-#   PAINEL PRINCIPAL
-# ============================================================
 class PainelView(discord.ui.View):
     def __init__(self): super().__init__(timeout=600)
 
-    # ========== KEY ==========
     @discord.ui.button(label="Criar Key", style=discord.ButtonStyle.success, row=0)
     async def b_key(self, itx, b):
         if not is_adm(itx.user.id):
@@ -726,7 +731,6 @@ class PainelView(discord.ui.View):
                             description=txt[:4000], color=0x2B2B33)
         await itx.response.send_message(embed=emb, ephemeral=True)
 
-    # ========== GERENCIAR KEYS ==========
     @discord.ui.button(label="Pausar Key", style=discord.ButtonStyle.secondary, row=1)
     async def b_pause(self, itx, b):
         if not is_adm(itx.user.id):
@@ -762,7 +766,6 @@ class PainelView(discord.ui.View):
         await itx.response.send_message("Escolha a key pra ver info:",
                                         view=ManageKeyView("info"), ephemeral=True)
 
-    # ========== FUNÇÕES ==========
     @discord.ui.button(label="Manutenção Funções", style=discord.ButtonStyle.primary, row=2)
     async def b_manut_func(self, itx, b):
         if not is_adm(itx.user.id):
@@ -782,7 +785,6 @@ class PainelView(discord.ui.View):
         else:
             await itx.response.send_modal(MaintenanceModal())
 
-    # ========== BANS ==========
     @discord.ui.button(label="Banir User", style=discord.ButtonStyle.danger, row=3)
     async def b_ban(self, itx, b):
         if not is_adm(itx.user.id):
@@ -808,7 +810,6 @@ class PainelView(discord.ui.View):
         await itx.response.send_message("Escolha o ban pra remover:",
                                         view=BanView(), ephemeral=True)
 
-    # ========== LOGS ==========
     @discord.ui.button(label="Ver Logs", style=discord.ButtonStyle.secondary, row=4)
     async def b_logs(self, itx, b):
         if not is_adm(itx.user.id):
@@ -822,7 +823,6 @@ class PainelView(discord.ui.View):
             description=txt[:4000] if txt else "Nenhum", color=0x2B2B33)
         await itx.response.send_message(embed=emb, ephemeral=True)
 
-    # ========== ADMINS ==========
     @discord.ui.button(label="Adicionar ADM", style=discord.ButtonStyle.success, row=4)
     async def b_addadm(self, itx, b):
         if itx.user.id not in ADMIN_IDS:
@@ -846,7 +846,6 @@ class PainelView(discord.ui.View):
         txt += "\n".join(f"<@{a}>" for a in sec) if sec else "Nenhum"
         await itx.response.send_message(txt, ephemeral=True)
 
-    # ========== CONFIG ==========
     @discord.ui.button(label="⚙️ Configurar", style=discord.ButtonStyle.primary, row=5)
     async def b_config(self, itx, b):
         if not is_adm(itx.user.id):
@@ -887,29 +886,31 @@ class PainelView(discord.ui.View):
                     except: pass
         emb = discord.Embed(title="📊 STATUS DO SERVIDOR", color=0x2B2B33)
         emb.add_field(name="🟢 Online", value="Sim", inline=True)
-        emb.add_field(name="🔧 Manutenção", value="Sim" if c["maintenance"] else "Não", inline=True)
-        emb.add_field(name="💓 Auto-Ping", value="ON" if c.get("auto_ping", True) else "OFF", inline=True)
+        emb.add_field(name="🔧 Manutenção",
+            value="Sim" if c["maintenance"] else "Não", inline=True)
+        emb.add_field(name="💓 Auto-Ping",
+            value="ON" if c.get("auto_ping", True) else "OFF", inline=True)
         emb.add_field(name="🔑 Keys", value=f"{ativas}/{total_keys}", inline=True)
         emb.add_field(name="🚫 Bans", value=str(len(db.get("bans", {}))), inline=True)
         emb.add_field(name="👑 Admins", value=str(len(list_admins())), inline=True)
         emb.add_field(name="🌐 Local", value=f"`http://127.0.0.1:{API_PORT}`", inline=False)
         emb.add_field(name="🌐 Rede", value=f"`http://{ip}:{API_PORT}`", inline=False)
-        if c.get("api_url"): emb.add_field(name="🌐 Pública", value=f"`{c['api_url']}`", inline=False)
-        emb.add_field(name="⬆️ Versão Mínima", value=f"v{c.get('version_name','?')} (code {c.get('min_version',0)})", inline=False)
+        if c.get("api_url"):
+            emb.add_field(name="🌐 Pública", value=f"`{c['api_url']}`", inline=False)
+        emb.add_field(name="⬆️ Versão Mínima",
+            value=f"v{c.get('version_name','?')} (code {c.get('min_version',0)})",
+            inline=False)
         await itx.response.send_message(embed=emb, ephemeral=True)
 
 
-# ============================================================
-#   COMANDOS
-# ============================================================
 @bot.event
 async def on_ready():
     try:
         synced = await bot.tree.sync()
-        print(f"Slash sincronizados: {len(synced)}")
-    except Exception as e: print("Erro:", e)
-    print(f"BOT: {bot.user}")
-    print(f"API: http://{get_local_ip()}:{API_PORT}")
+        print(f"✅ Slash sincronizados: {len(synced)}")
+    except Exception as e: print("❌ Erro sync:", e)
+    print(f"✅ BOT ONLINE: {bot.user}")
+    print(f"✅ API: http://{get_local_ip()}:{API_PORT}")
 
 
 @bot.tree.command(name="painel", description="Painel ADM completo")
@@ -919,8 +920,8 @@ async def cmd_painel(itx):
     c = get_config(); feats = get_features(); db = load_db()
     ativas = [f["name"] for f in feats.values() if not f.get("locked")]
     emb = discord.Embed(
-        title="🎮 PAINEL ADM — FOULD STORES v26.0",
-        description="**Dev:** MTGXZz TEAM\n**Equipe:** FOULD STORES\n\nUse os botões abaixo 👇",
+        title="🎮 PAINEL ADM — FOULD STORES v26.1",
+        description="**Dev:** MTGXZz TEAM\n**Equipe:** FOULD STORES",
         color=0x2B2B33)
     emb.add_field(name="Status",
         value="🔴 Manutenção" if c["maintenance"] else "🟢 Online", inline=True)
@@ -928,19 +929,35 @@ async def cmd_painel(itx):
     emb.add_field(name="Bans", value=str(len(db.get("bans", {}))), inline=True)
     emb.add_field(name="Auto-Ping",
         value="✅ ON" if c.get("auto_ping", True) else "❌ OFF", inline=True)
-    emb.add_field(name="ATIVAS", value=", ".join(ativas[:5]) if ativas else "Nenhuma", inline=False)
+    emb.add_field(name="ATIVAS",
+        value=", ".join(ativas[:5]) if ativas else "Nenhuma", inline=False)
     emb.set_footer(text=f"API: http://{get_local_ip()}:{API_PORT}")
     await itx.response.send_message(embed=emb, view=PainelView(), ephemeral=True)
 
 
+# ============================================================
+#   MAIN — Render usa gunicorn ou thread do Flask
+# ============================================================
+def start_api():
+    """Roda Flask em thread separada."""
+    app.run(host="0.0.0.0", port=API_PORT, debug=False, use_reloader=False)
+
+
 if __name__ == "__main__":
-    ip = get_local_ip()
-    print("=" * 55)
-    print("  FOULD STORES v26.0")
-    print("=" * 55)
-    print(f"  API Local:  http://127.0.0.1:{API_PORT}")
-    print(f"  API Rede:   http://{ip}:{API_PORT}")
-    print("=" * 55)
-    threading.Thread(target=auto_ping_loop, daemon=True).start()
-    threading.Thread(target=run_flask, daemon=True).start()
-    bot.run(BOT_TOKEN)
+    # Verifica se tem token
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN NÃO CONFIGURADO! Configura nas variáveis de ambiente.")
+        print("⚠️ Rodando SÓ a API...")
+        app.run(host="0.0.0.0", port=API_PORT, debug=False, use_reloader=False)
+    else:
+        # Inicia auto-ping
+        threading.Thread(target=auto_ping_loop, daemon=True).start()
+        print("💓 Auto-ping iniciado")
+        
+        # Inicia Flask em thread separada
+        threading.Thread(target=start_api, daemon=True).start()
+        print(f"🚀 API rodando na porta {API_PORT}")
+        
+        # Inicia bot
+        print("🤖 Iniciando bot Discord...")
+        bot.run(BOT_TOKEN)
